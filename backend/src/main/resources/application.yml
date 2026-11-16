@@ -1,0 +1,158 @@
+spring:
+  application:
+    name: tickets-backend
+  servlet:
+    multipart:
+      max-file-size: 5MB      # debe coincidir con almacenamiento.max-bytes
+      max-request-size: 6MB
+  profiles:
+    active: local # Activa el perfil local por defecto
+  task:
+    scheduling:
+      pool:
+        size: 4
+
+# Seguridad del inicio de sesión: tras N intentos fallidos seguidos de un mismo correo se bloquea temporalmente (HTTP 429)
+seguridad:
+  login:
+    max-intentos: ${LOGIN_MAX_INTENTOS:5}
+    ventana-minutos: ${LOGIN_VENTANA_MINUTOS:15}
+
+auth:
+  access-token:
+    expiration-ms: ${JWT_ACCESS_TOKEN_MS:900000}
+  refresh-token:
+    idle-timeout-ms: ${JWT_REFRESH_IDLE_MS:28800000}
+    absolute-timeout-ms: ${JWT_REFRESH_ABSOLUTE_MS:604800000}
+  refresh-cookie:
+    secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
+    same-site: ${AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
+  activation-token:
+    expiration-hours: ${ACCOUNT_ACTIVATION_EXPIRATION_HOURS:24}
+
+app:
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:5174}
+
+# Keep API documentation disabled unless explicitly enabled by an environment profile.
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
+    path: /swagger-ui.html
+
+jwt:
+  secret: ${JWT_SECRET:}
+
+# Integración con RR. HH. (contrato v1: docs/contrato-rrhh-v1.md)
+rrhh:
+  proveedor: ${RRHH_PROVEEDOR:local}      # local (tabla empleado.empleado) | rest (API de RR. HH.)
+  api:
+    url: ${RRHH_API_URL:}                 # p. ej. https://rrhh.ejemplo.org/api/rrhh/v1
+    token: ${RRHH_API_TOKEN:}             # token de servicio, se envía como "Authorization: Bearer"
+    timeout-segundos: 5
+  estado-activo: ACTIVO                   # valor de estadoLaboral que indica un empleado activo (sin distinguir mayúsculas)
+  cache-segundos: 300                     # vigencia de los datos de empleados consultados a RR. HH.
+  sync:
+    intervalo-ms: ${RRHH_SYNC_INTERVAL_MS:600000}
+    tamano-pagina: ${RRHH_SYNC_PAGE_SIZE:500}
+    demora-inicial-ms: ${RRHH_SYNC_INITIAL_DELAY_MS:15000}
+  provisionamiento:
+    intervalo-ms: ${RRHH_PROVISIONAMIENTO_INTERVAL_MS:250}
+
+# Adjuntos (Acta de Refinamiento: Cloudinary, solo se guarda la URL en la base de datos)
+almacenamiento:
+  proveedor: ${ALMACENAMIENTO_PROVEEDOR:local}     # local (disco, desarrollo) | cloudinary
+  max-bytes: 5242880                                # 5 MB por archivo
+  max-adjuntos-por-ticket: 5
+  retencion-meses: ${ADJUNTOS_RETENCION_MESES:0}   # 0 = no se eliminan; N = se eliminan los archivos de tickets cerrados hace N meses
+  local:
+    ruta: ${ALMACENAMIENTO_LOCAL_RUTA:./uploads}
+
+---
+# ==========================================
+# PERFIL LOCAL (Desarrollo con Docker)
+# ==========================================
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:postgresql://localhost:${POSTGRES_PORT:5433}/tickets_db
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:154859}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate # ¡CRUCIAL! Solo valida, nunca crea ni modifica
+    show-sql: true
+    open-in-view: false # <-- AGREGA ESTA LÍNEA para eliminar el warning de rendimiento
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: tickets-group
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:true}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}
+
+# Puerto del servidor
+server:
+  port: ${SERVER_PORT:8081}
+
+# Configuración de Cloudinary (Placeholders)
+cloudinary:
+  carpeta: ${CLOUDINARY_CARPETA:calma-tickets}
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+  api-key: ${CLOUDINARY_API_KEY:}
+  api-secret: ${CLOUDINARY_API_SECRET:}
+
+# Configuración de RRHH API (Mock local o real)
+rrhh:
+  api:
+    url: ${RRHH_API_URL:http://localhost:8080/api/integracion/v1}
+    token: ${RRHH_API_TOKEN:}
+
+# Configuración SMTP. Por defecto conserva MailHog para desarrollo local.
+spring.mail:
+  host: ${MAIL_HOST:localhost}
+  port: ${MAIL_PORT:1025}
+  username: ${MAIL_USERNAME:test}
+  password: ${MAIL_PASSWORD:test}
+  properties:
+    mail:
+      smtp:
+        auth: ${MAIL_SMTP_AUTH:false}
+        starttls:
+          enable: ${MAIL_SMTP_STARTTLS:false}
+
+app:
+  mail:
+    from: ${MAIL_FROM:soporte@fundacioncalma.com}
+
+# Asignación de tickets (Acta de Refinamiento, sección 4)
+tickets:
+  asignacion:
+    # Máximo de tickets activos por técnico. 0 = sin límite.
+    max-por-tecnico: ${MAX_TICKETS_POR_TECNICO:0}
